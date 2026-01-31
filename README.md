@@ -41,7 +41,7 @@ cd api
 npm install
 cp .env.example .env
 # Edit .env with your database credentials
-npm run db:migrate
+npm run db:setup
 npm run dev
 ```
 
@@ -417,8 +417,8 @@ npm test
 # Run linter
 npm run lint
 
-# Database migrations
-npm run db:migrate
+# Database setup (fresh install only - runs scripts/schema.sql)
+npm run db:setup
 
 # Seed database
 npm run db:seed
