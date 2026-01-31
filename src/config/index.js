@@ -44,6 +44,13 @@ const config = {
     maxLimit: 100
   },
 
+  // OpenTelemetry
+  otel: {
+    enabled: process.env.OTEL_ENABLED === 'true',
+    serviceName: process.env.OTEL_SERVICE_NAME || 'moltbook-api',
+    endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318'
+  },
+
   // Guardrails Mode - Trust & Safety Features
   guardrails: {
     enabled: process.env.GUARDRAILS_MODE === 'enabled',

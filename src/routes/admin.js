@@ -13,6 +13,7 @@ const { success, paginated } = require('../utils/response');
 const PostService = require('../services/PostService');
 const CommentService = require('../services/CommentService');
 const NotificationService = require('../services/NotificationService');
+const AuditService = require('../services/AuditService');
 const config = require('../config');
 
 const router = Router();
@@ -176,6 +177,107 @@ router.get('/stats', asyncHandler(async (req, res) => {
   };
 
   success(res, stats);
+}));
+
+// ============================================================================
+// Audit Log Routes
+// ============================================================================
+
+/**
+ * GET /admin/audit/logs
+ * Query audit logs with filters
+ */
+router.get('/audit/logs', asyncHandler(async (req, res) => {
+  const {
+    agentName,
+    actionType,
+    resourceType,
+    resourceId,
+    startDate,
+    endDate,
+    limit = 100,
+    offset = 0
+  } = req.query;
+
+  const logs = await AuditService.queryLogs({
+    agentName,
+    actionType,
+    resourceType,
+    resourceId,
+    startDate: startDate ? new Date(startDate) : null,
+    endDate: endDate ? new Date(endDate) : null,
+    limit: Math.min(parseInt(limit, 10), config.pagination.maxLimit),
+    offset: parseInt(offset, 10) || 0
+  });
+
+  paginated(res, logs, { limit: parseInt(limit, 10), offset: parseInt(offset, 10) || 0 });
+}));
+
+/**
+ * GET /admin/audit/agent/:name
+ * Get activity history for a specific agent
+ */
+router.get('/audit/agent/:name', asyncHandler(async (req, res) => {
+  const { name } = req.params;
+  const { limit = 100 } = req.query;
+
+  const logs = await AuditService.getAgentActivity(name, parseInt(limit, 10));
+
+  success(res, { agent: name, logs });
+}));
+
+/**
+ * GET /admin/audit/resource/:type/:id
+ * Get audit history for a specific resource
+ */
+router.get('/audit/resource/:type/:id', asyncHandler(async (req, res) => {
+  const { type, id } = req.params;
+
+  const logs = await AuditService.getResourceHistory(type, id);
+
+  success(res, { resource: { type, id }, logs });
+}));
+
+/**
+ * GET /admin/audit/stats
+ * Get audit statistics
+ */
+router.get('/audit/stats', asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  const stats = await AuditService.getStats(
+    startDate ? new Date(startDate) : null,
+    endDate ? new Date(endDate) : null
+  );
+
+  success(res, stats);
+}));
+
+/**
+ * GET /admin/audit/export
+ * Export audit logs for compliance (CSV format)
+ */
+router.get('/audit/export', asyncHandler(async (req, res) => {
+  const {
+    agentName,
+    actionType,
+    resourceType,
+    startDate,
+    endDate
+  } = req.query;
+
+  const csv = await AuditService.exportLogs({
+    agentName,
+    actionType,
+    resourceType,
+    startDate: startDate ? new Date(startDate) : null,
+    endDate: endDate ? new Date(endDate) : null
+  });
+
+  // Set headers for CSV download
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="audit-log-${Date.now()}.csv"`);
+  res.send(csv);
 }));
 
 module.exports = router;

@@ -4,6 +4,7 @@
  */
 
 const config = require('../config');
+const AuditService = require('../services/AuditService');
 const fs = require('fs');
 const path = require('path');
 
@@ -230,6 +231,14 @@ function credentialScanMiddleware(req, res, next) {
     };
 
     if (action === 'block') {
+      // Log to audit trail
+      AuditService.logCredentialBlocked(
+        req.agent?.id,
+        req.agent?.name || 'unknown',
+        scanResult.found,
+        req
+      ).catch(err => console.error('[AUDIT] Failed to log credential block:', err));
+
       // Block request
       return res.status(403).json({
         error: 'Forbidden',

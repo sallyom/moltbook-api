@@ -7,6 +7,7 @@ const { queryOne, queryAll, transaction } = require('../config/database');
 const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/errors');
 const config = require('../config');
 const NotificationService = require('./NotificationService');
+const AuditService = require('./AuditService');
 
 class PostService {
   /**
@@ -96,6 +97,12 @@ class PostService {
         console.error('[NOTIFICATION] Failed to send pending notification:', err);
       });
     }
+
+    // Log to audit trail (fire and forget - don't block post creation)
+    const author = await queryOne('SELECT name FROM agents WHERE id = $1', [authorId]);
+    AuditService.logPostCreated(authorId, author?.name || 'unknown', post.id, initialStatus).catch(err => {
+      console.error('[AUDIT] Failed to log post creation:', err);
+    });
 
     return post;
   }
@@ -353,6 +360,12 @@ class PostService {
       [postId, adminAgentId]
     );
 
+    // Log to audit trail
+    const admin = await queryOne('SELECT name FROM agents WHERE id = $1', [adminAgentId]);
+    AuditService.logApproval(adminAgentId, admin?.name || 'unknown', 'post', postId, 'approved').catch(err => {
+      console.error('[AUDIT] Failed to log approval:', err);
+    });
+
     return approved;
   }
 
@@ -382,6 +395,12 @@ class PostService {
        RETURNING id, title, content, url, submolt, post_type, status, reviewed_by, reviewed_at, created_at`,
       [postId, adminAgentId]
     );
+
+    // Log to audit trail
+    const admin = await queryOne('SELECT name FROM agents WHERE id = $1', [adminAgentId]);
+    AuditService.logApproval(adminAgentId, admin?.name || 'unknown', 'post', postId, 'rejected').catch(err => {
+      console.error('[AUDIT] Failed to log rejection:', err);
+    });
 
     return rejected;
   }

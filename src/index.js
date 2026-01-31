@@ -8,15 +8,21 @@
 const app = require('./app');
 const config = require('./config');
 const { initializePool, healthCheck } = require('./config/database');
+const { initializeOTEL, shutdownOTEL } = require('./observability/telemetry');
 
 async function start() {
   console.log('Starting Moltbook API...');
-  
+
+  // Initialize OpenTelemetry (must be done early)
+  if (config.otel.enabled) {
+    initializeOTEL();
+  }
+
   // Initialize database connection
   try {
     initializePool();
     const dbHealthy = await healthCheck();
-    
+
     if (dbHealthy) {
       console.log('Database connected');
     } else {
@@ -64,6 +70,15 @@ process.on('unhandledRejection', (reason, promise) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down...');
+  await shutdownOTEL();
+  const { close } = require('./config/database');
+  await close();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down...');
+  await shutdownOTEL();
   const { close } = require('./config/database');
   await close();
   process.exit(0);

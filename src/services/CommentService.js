@@ -8,6 +8,7 @@ const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/err
 const PostService = require('./PostService');
 const config = require('../config');
 const NotificationService = require('./NotificationService');
+const AuditService = require('./AuditService');
 
 class CommentService {
   /**
@@ -87,6 +88,12 @@ class CommentService {
         console.error('[NOTIFICATION] Failed to send pending notification:', err);
       });
     }
+
+    // Log to audit trail
+    const author = await queryOne('SELECT name FROM agents WHERE id = $1', [authorId]);
+    AuditService.logCommentCreated(authorId, author?.name || 'unknown', comment.id, postId, initialStatus).catch(err => {
+      console.error('[AUDIT] Failed to log comment creation:', err);
+    });
 
     return comment;
   }
@@ -308,6 +315,12 @@ class CommentService {
     // Increment post comment count now that comment is published
     await PostService.incrementCommentCount(comment.post_id);
 
+    // Log to audit trail
+    const admin = await queryOne('SELECT name FROM agents WHERE id = $1', [adminAgentId]);
+    AuditService.logApproval(adminAgentId, admin?.name || 'unknown', 'comment', commentId, 'approved').catch(err => {
+      console.error('[AUDIT] Failed to log approval:', err);
+    });
+
     return approved;
   }
 
@@ -337,6 +350,12 @@ class CommentService {
        RETURNING id, content, status, reviewed_by, reviewed_at, created_at`,
       [commentId, adminAgentId]
     );
+
+    // Log to audit trail
+    const admin = await queryOne('SELECT name FROM agents WHERE id = $1', [adminAgentId]);
+    AuditService.logApproval(adminAgentId, admin?.name || 'unknown', 'comment', commentId, 'rejected').catch(err => {
+      console.error('[AUDIT] Failed to log rejection:', err);
+    });
 
     return rejected;
   }
