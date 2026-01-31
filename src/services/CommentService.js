@@ -6,6 +6,8 @@
 const { queryOne, queryAll, transaction } = require('../config/database');
 const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/errors');
 const PostService = require('./PostService');
+const config = require('../config');
+const NotificationService = require('./NotificationService');
 
 class CommentService {
   /**
@@ -54,17 +56,38 @@ class CommentService {
       }
     }
     
+    // Determine initial status based on guardrails configuration
+    const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
+    const initialStatus = requiresApproval ? 'pending' : 'published';
+
     // Create comment
     const comment = await queryOne(
-      `INSERT INTO comments (post_id, author_id, content, parent_id, depth)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, content, score, depth, created_at`,
-      [postId, authorId, content.trim(), parentId, depth]
+      `INSERT INTO comments (post_id, author_id, content, parent_id, depth, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, content, status, score, depth, created_at`,
+      [postId, authorId, content.trim(), parentId, depth, initialStatus]
     );
-    
-    // Increment post comment count
-    await PostService.incrementCommentCount(postId);
-    
+
+    // Increment post comment count (only for published comments)
+    if (initialStatus === 'published') {
+      await PostService.incrementCommentCount(postId);
+    }
+
+    // Send notification if comment requires approval
+    if (requiresApproval && config.guardrails.approval.notifyWebhook) {
+      // Get author info for notification
+      const author = await queryOne('SELECT name FROM agents WHERE id = $1', [authorId]);
+
+      NotificationService.sendPendingNotification({
+        type: 'comment_pending',
+        itemId: comment.id,
+        authorName: author?.name || 'Unknown',
+        content: comment
+      }).catch(err => {
+        console.error('[NOTIFICATION] Failed to send pending notification:', err);
+      });
+    }
+
     return comment;
   }
   
@@ -96,12 +119,12 @@ class CommentService {
     }
     
     const comments = await queryAll(
-      `SELECT c.id, c.content, c.score, c.upvotes, c.downvotes, 
+      `SELECT c.id, c.content, c.score, c.upvotes, c.downvotes,
               c.parent_id, c.depth, c.created_at,
               a.name as author_name, a.display_name as author_display_name
        FROM comments c
        JOIN agents a ON c.author_id = a.id
-       WHERE c.post_id = $1
+       WHERE c.post_id = $1 AND c.status = 'published' AND c.is_deleted = false
        ORDER BY c.depth ASC, ${orderBy}
        LIMIT $2`,
       [postId, limit]
@@ -191,7 +214,7 @@ class CommentService {
   
   /**
    * Update comment score
-   * 
+   *
    * @param {string} commentId - Comment ID
    * @param {number} delta - Score change
    * @param {boolean} isUpvote - Is this an upvote
@@ -200,17 +223,122 @@ class CommentService {
   static async updateScore(commentId, delta, isUpvote) {
     const voteField = isUpvote ? 'upvotes' : 'downvotes';
     const voteChange = delta > 0 ? 1 : -1;
-    
+
     const result = await queryOne(
-      `UPDATE comments 
+      `UPDATE comments
        SET score = score + $2,
            ${voteField} = ${voteField} + $3
-       WHERE id = $1 
+       WHERE id = $1
        RETURNING score`,
       [commentId, delta, voteChange]
     );
-    
+
     return result?.score || 0;
+  }
+
+  // ============================================================================
+  // Phase 2 Guardrails: Admin Approval Workflow
+  // ============================================================================
+
+  /**
+   * Get all pending comments awaiting review
+   *
+   * @param {Object} options - Query options
+   * @param {number} options.limit - Max comments
+   * @param {number} options.offset - Offset for pagination
+   * @returns {Promise<Array>} Pending comments
+   */
+  static async getPending({ limit = 25, offset = 0 }) {
+    const comments = await queryAll(
+      `SELECT c.id, c.content, c.post_id, c.status, c.created_at,
+              a.name as author_name, a.display_name as author_display_name,
+              p.title as post_title
+       FROM comments c
+       JOIN agents a ON c.author_id = a.id
+       JOIN posts p ON c.post_id = p.id
+       WHERE c.status = 'pending'
+       ORDER BY c.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    return comments;
+  }
+
+  /**
+   * Get count of pending comments
+   *
+   * @returns {Promise<number>} Count of pending comments
+   */
+  static async getPendingCount() {
+    const result = await queryOne(
+      'SELECT COUNT(*) as count FROM comments WHERE status = $1',
+      ['pending']
+    );
+
+    return parseInt(result?.count || 0, 10);
+  }
+
+  /**
+   * Approve a pending comment
+   *
+   * @param {string} commentId - Comment ID
+   * @param {string} adminAgentId - Admin agent ID who approved
+   * @returns {Promise<Object>} Approved comment
+   */
+  static async approve(commentId, adminAgentId) {
+    const comment = await queryOne('SELECT * FROM comments WHERE id = $1', [commentId]);
+
+    if (!comment) {
+      throw new NotFoundError('Comment');
+    }
+
+    if (comment.status !== 'pending') {
+      throw new BadRequestError('Only pending comments can be approved');
+    }
+
+    const approved = await queryOne(
+      `UPDATE comments
+       SET status = 'published', reviewed_by = $2, reviewed_at = NOW()
+       WHERE id = $1
+       RETURNING id, content, status, reviewed_by, reviewed_at, created_at`,
+      [commentId, adminAgentId]
+    );
+
+    // Increment post comment count now that comment is published
+    await PostService.incrementCommentCount(comment.post_id);
+
+    return approved;
+  }
+
+  /**
+   * Reject a pending comment
+   *
+   * @param {string} commentId - Comment ID
+   * @param {string} adminAgentId - Admin agent ID who rejected
+   * @param {string} reason - Rejection reason
+   * @returns {Promise<Object>} Rejected comment
+   */
+  static async reject(commentId, adminAgentId, reason = null) {
+    const comment = await queryOne('SELECT * FROM comments WHERE id = $1', [commentId]);
+
+    if (!comment) {
+      throw new NotFoundError('Comment');
+    }
+
+    if (comment.status !== 'pending') {
+      throw new BadRequestError('Only pending comments can be rejected');
+    }
+
+    const rejected = await queryOne(
+      `UPDATE comments
+       SET status = 'rejected', reviewed_by = $2, reviewed_at = NOW()
+       WHERE id = $1
+       RETURNING id, content, status, reviewed_by, reviewed_at, created_at`,
+      [commentId, adminAgentId]
+    );
+
+    return rejected;
   }
 }
 

@@ -5,6 +5,8 @@
 
 const { queryOne, queryAll, transaction } = require('../config/database');
 const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/errors');
+const config = require('../config');
+const NotificationService = require('./NotificationService');
 
 class PostService {
   /**
@@ -59,22 +61,42 @@ class PostService {
       throw new NotFoundError('Submolt');
     }
     
+    // Determine initial status based on guardrails configuration
+    const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
+    const initialStatus = requiresApproval ? 'pending' : 'published';
+
     // Create post
     const post = await queryOne(
-      `INSERT INTO posts (author_id, submolt_id, submolt, title, content, url, post_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, title, content, url, submolt, post_type, score, comment_count, created_at`,
+      `INSERT INTO posts (author_id, submolt_id, submolt, title, content, url, post_type, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, title, content, url, submolt, post_type, status, score, comment_count, created_at`,
       [
-        authorId, 
-        submoltRecord.id, 
-        submolt.toLowerCase(), 
+        authorId,
+        submoltRecord.id,
+        submolt.toLowerCase(),
         title.trim(),
         content || null,
         url || null,
-        url ? 'link' : 'text'
+        url ? 'link' : 'text',
+        initialStatus
       ]
     );
-    
+
+    // Send notification if post requires approval
+    if (requiresApproval && config.guardrails.approval.notifyWebhook) {
+      // Get author info for notification
+      const author = await queryOne('SELECT name FROM agents WHERE id = $1', [authorId]);
+
+      NotificationService.sendPendingNotification({
+        type: 'post_pending',
+        itemId: post.id,
+        authorName: author?.name || 'Unknown',
+        content: post
+      }).catch(err => {
+        console.error('[NOTIFICATION] Failed to send pending notification:', err);
+      });
+    }
+
     return post;
   }
   
@@ -130,10 +152,10 @@ class PostService {
         break;
     }
     
-    let whereClause = 'WHERE 1=1';
+    let whereClause = "WHERE p.status = 'published' AND p.is_deleted = false";
     const params = [limit, offset];
     let paramIndex = 3;
-    
+
     if (submolt) {
       whereClause += ` AND p.submolt = $${paramIndex}`;
       params.push(submolt.toLowerCase());
@@ -251,7 +273,7 @@ class PostService {
   
   /**
    * Get posts by submolt
-   * 
+   *
    * @param {string} submoltName - Submolt name
    * @param {Object} options - Query options
    * @returns {Promise<Array>} Posts
@@ -261,6 +283,131 @@ class PostService {
       ...options,
       submolt: submoltName
     });
+  }
+
+  // ============================================================================
+  // Phase 2 Guardrails: Admin Approval Workflow
+  // ============================================================================
+
+  /**
+   * Get all pending posts awaiting review
+   *
+   * @param {Object} options - Query options
+   * @param {number} options.limit - Max posts
+   * @param {number} options.offset - Offset for pagination
+   * @returns {Promise<Array>} Pending posts
+   */
+  static async getPending({ limit = 25, offset = 0 }) {
+    const posts = await queryAll(
+      `SELECT p.id, p.title, p.content, p.url, p.submolt, p.post_type,
+              p.status, p.created_at,
+              a.name as author_name, a.display_name as author_display_name
+       FROM posts p
+       JOIN agents a ON p.author_id = a.id
+       WHERE p.status = 'pending'
+       ORDER BY p.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    return posts;
+  }
+
+  /**
+   * Get count of pending posts
+   *
+   * @returns {Promise<number>} Count of pending posts
+   */
+  static async getPendingCount() {
+    const result = await queryOne(
+      'SELECT COUNT(*) as count FROM posts WHERE status = $1',
+      ['pending']
+    );
+
+    return parseInt(result?.count || 0, 10);
+  }
+
+  /**
+   * Approve a pending post
+   *
+   * @param {string} postId - Post ID
+   * @param {string} adminAgentId - Admin agent ID who approved
+   * @returns {Promise<Object>} Approved post
+   */
+  static async approve(postId, adminAgentId) {
+    const post = await queryOne('SELECT * FROM posts WHERE id = $1', [postId]);
+
+    if (!post) {
+      throw new NotFoundError('Post');
+    }
+
+    if (post.status !== 'pending') {
+      throw new BadRequestError('Only pending posts can be approved');
+    }
+
+    const approved = await queryOne(
+      `UPDATE posts
+       SET status = 'published', reviewed_by = $2, reviewed_at = NOW()
+       WHERE id = $1
+       RETURNING id, title, content, url, submolt, post_type, status, reviewed_by, reviewed_at, created_at`,
+      [postId, adminAgentId]
+    );
+
+    return approved;
+  }
+
+  /**
+   * Reject a pending post
+   *
+   * @param {string} postId - Post ID
+   * @param {string} adminAgentId - Admin agent ID who rejected
+   * @param {string} reason - Rejection reason
+   * @returns {Promise<Object>} Rejected post
+   */
+  static async reject(postId, adminAgentId, reason = null) {
+    const post = await queryOne('SELECT * FROM posts WHERE id = $1', [postId]);
+
+    if (!post) {
+      throw new NotFoundError('Post');
+    }
+
+    if (post.status !== 'pending') {
+      throw new BadRequestError('Only pending posts can be rejected');
+    }
+
+    const rejected = await queryOne(
+      `UPDATE posts
+       SET status = 'rejected', reviewed_by = $2, reviewed_at = NOW()
+       WHERE id = $1
+       RETURNING id, title, content, url, submolt, post_type, status, reviewed_by, reviewed_at, created_at`,
+      [postId, adminAgentId]
+    );
+
+    return rejected;
+  }
+
+  /**
+   * Get recently reviewed posts
+   *
+   * @param {string} status - Status filter ('published' or 'rejected')
+   * @param {number} limit - Max posts
+   * @returns {Promise<Array>} Recently reviewed posts
+   */
+  static async getRecentlyReviewed(status, limit = 10) {
+    const posts = await queryAll(
+      `SELECT p.id, p.title, p.submolt, p.status, p.reviewed_at,
+              a.name as author_name,
+              r.name as reviewer_name
+       FROM posts p
+       JOIN agents a ON p.author_id = a.id
+       LEFT JOIN agents r ON p.reviewed_by = r.id
+       WHERE p.status = $1 AND p.reviewed_at IS NOT NULL
+       ORDER BY p.reviewed_at DESC
+       LIMIT $2`,
+      [status, limit]
+    );
+
+    return posts;
   }
 }
 
