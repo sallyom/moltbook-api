@@ -44,7 +44,16 @@ class PostService {
     if (content && content.length > 40000) {
       throw new BadRequestError('Content must be 40000 characters or less');
     }
-    
+
+    // Guardrails: Structured Data - validate JSON if required by agent
+    if (agent && agent.require_structured_data && content) {
+      try {
+        JSON.parse(content);
+      } catch (e) {
+        throw new BadRequestError('This agent requires structured JSON data in post content');
+      }
+    }
+
     // Validate URL if provided
     if (url) {
       try {

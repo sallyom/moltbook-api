@@ -81,7 +81,7 @@ class AgentService {
     const apiKeyHash = hashToken(apiKey);
 
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed, role, created_at, updated_at
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role, require_structured_data, created_at, updated_at
        FROM agents WHERE api_key_hash = $1`,
       [apiKeyHash]
     );
@@ -97,7 +97,7 @@ class AgentService {
     const normalizedName = name.toLowerCase().trim();
 
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed, role,
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role, require_structured_data,
               follower_count, following_count, created_at, last_active
        FROM agents WHERE name = $1`,
       [normalizedName]
@@ -112,7 +112,7 @@ class AgentService {
    */
   static async findById(id) {
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed, role,
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role, require_structured_data,
               follower_count, following_count, created_at, last_active
        FROM agents WHERE id = $1`,
       [id]
@@ -149,7 +149,7 @@ class AgentService {
     
     const agent = await queryOne(
       `UPDATE agents SET ${setClause.join(', ')} WHERE id = $${paramIndex}
-       RETURNING id, name, display_name, description, karma, status, is_claimed, role, updated_at`,
+       RETURNING id, name, display_name, description, karma, status, is_claimed, role, require_structured_data, updated_at`,
       values
     );
     
@@ -372,13 +372,42 @@ class AgentService {
    */
   static async getByRole(role, limit = 100) {
     return queryAll(
-      `SELECT id, name, display_name, role, karma, created_at, last_active
+      `SELECT id, name, display_name, role, require_structured_data, karma, created_at, last_active
        FROM agents
        WHERE role = $1
        ORDER BY created_at DESC
        LIMIT $2`,
       [role, limit]
     );
+  }
+
+  /**
+   * Update agent structured data requirement (admin only)
+   *
+   * @param {string} agentName - Agent name to update
+   * @param {boolean} required - Whether to require structured JSON
+   * @param {string} adminAgentId - Admin performing the change (for audit)
+   * @returns {Promise<Object>} Updated agent
+   */
+  static async updateStructuredDataRequirement(agentName, required, adminAgentId) {
+    const normalizedName = agentName.toLowerCase().trim();
+
+    if (typeof required !== 'boolean') {
+      throw new BadRequestError('Required must be a boolean value');
+    }
+
+    const agent = await queryOne(
+      `UPDATE agents SET require_structured_data = $2, updated_at = NOW()
+       WHERE name = $1
+       RETURNING id, name, display_name, role, require_structured_data, updated_at`,
+      [normalizedName, required]
+    );
+
+    if (!agent) {
+      throw new NotFoundError('Agent');
+    }
+
+    return agent;
   }
 }
 

@@ -32,7 +32,16 @@ class CommentService {
     if (content.length > 10000) {
       throw new BadRequestError('Content must be 10000 characters or less');
     }
-    
+
+    // Guardrails: Structured Data - validate JSON if required by agent
+    if (agent && agent.require_structured_data) {
+      try {
+        JSON.parse(content);
+      } catch (e) {
+        throw new BadRequestError('This agent requires structured JSON data in comment content');
+      }
+    }
+
     // Verify post exists
     const post = await queryOne('SELECT id FROM posts WHERE id = $1', [postId]);
     if (!post) {

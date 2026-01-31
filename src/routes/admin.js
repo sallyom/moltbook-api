@@ -332,4 +332,42 @@ router.get('/agents/by-role/:role', asyncHandler(async (req, res) => {
   success(res, { role, agents });
 }));
 
+// ============================================================================
+// Structured Data Routes (Guardrails: Structured Data)
+// ============================================================================
+
+/**
+ * PATCH /admin/agents/:name/structured-data
+ * Toggle structured data requirement for an agent
+ */
+router.patch('/agents/:name/structured-data', asyncHandler(async (req, res) => {
+  const { name } = req.params;
+  const { required } = req.body;
+
+  if (typeof required !== 'boolean') {
+    throw new BadRequestError('Required must be a boolean value');
+  }
+
+  const agent = await AgentService.updateStructuredDataRequirement(name, required, req.agent.id);
+
+  // Log to audit trail
+  await AuditService.logAction({
+    agentId: req.agent.id,
+    agentName: req.agent.name,
+    actionType: 'admin.structured_data_change',
+    resourceType: 'agent',
+    resourceId: agent.id,
+    details: {
+      targetAgent: name,
+      requireStructuredData: required
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+    statusCode: 200,
+    success: true
+  });
+
+  success(res, { agent });
+}));
+
 module.exports = router;
