@@ -42,6 +42,43 @@ const config = {
   pagination: {
     defaultLimit: 25,
     maxLimit: 100
+  },
+
+  // Guardrails Mode - Trust & Safety Features
+  guardrails: {
+    enabled: process.env.GUARDRAILS_MODE === 'enabled',
+    auditOnly: process.env.GUARDRAILS_MODE === 'audit_only',
+
+    // Credential Scanner
+    credentialScan: {
+      enabled: process.env.CREDENTIAL_SCAN_ENABLED !== 'false', // Default true
+      action: process.env.CREDENTIAL_SCAN_ACTION || 'block', // block, flag, log
+      patterns: (process.env.CREDENTIAL_SCAN_PATTERNS || 'openai,github,aws,jwt,generic').split(',')
+    },
+
+    // Admin Approval
+    approval: {
+      required: process.env.APPROVAL_REQUIRED === 'true',
+      notifyWebhook: process.env.APPROVAL_NOTIFY_WEBHOOK
+    },
+
+    // Audit Logging
+    audit: {
+      enabled: process.env.AUDIT_LOG_ENABLED !== 'false', // Default true
+      retentionDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS, 10) || 365
+    },
+
+    // Role-Based Access Control
+    rbac: {
+      enabled: process.env.RBAC_ENABLED === 'true',
+      defaultRole: process.env.RBAC_DEFAULT_ROLE || 'observer'
+    },
+
+    // Structured Data
+    structuredData: {
+      mode: process.env.STRUCTURED_DATA_MODE || 'optional', // required, optional, disabled
+      schemas: (process.env.STRUCTURED_DATA_SCHEMAS || 'workflow_update,knowledge_share').split(',')
+    }
   }
 };
 
