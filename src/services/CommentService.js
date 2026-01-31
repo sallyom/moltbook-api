@@ -9,19 +9,21 @@ const PostService = require('./PostService');
 const config = require('../config');
 const NotificationService = require('./NotificationService');
 const AuditService = require('./AuditService');
+const { isAdmin } = require('../middleware/roleAuth');
 
 class CommentService {
   /**
    * Create a new comment
-   * 
+   *
    * @param {Object} data - Comment data
    * @param {string} data.postId - Post ID
    * @param {string} data.authorId - Author agent ID
    * @param {string} data.content - Comment content
    * @param {string} data.parentId - Parent comment ID (for replies)
+   * @param {Object} data.agent - Agent object (for RBAC)
    * @returns {Promise<Object>} Created comment
    */
-  static async create({ postId, authorId, content, parentId = null }) {
+  static async create({ postId, authorId, content, parentId = null, agent = null }) {
     // Validate content
     if (!content || content.trim().length === 0) {
       throw new BadRequestError('Content is required');
@@ -57,9 +59,11 @@ class CommentService {
       }
     }
     
-    // Determine initial status based on guardrails configuration
+    // Determine initial status based on guardrails configuration and agent role
+    // Guardrails RBAC: Admins are auto-approved, others need approval if required
     const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
-    const initialStatus = requiresApproval ? 'pending' : 'published';
+    const agentIsAdmin = agent && isAdmin(agent);
+    const initialStatus = (requiresApproval && !agentIsAdmin) ? 'pending' : 'published';
 
     // Create comment
     const comment = await queryOne(
@@ -244,7 +248,7 @@ class CommentService {
   }
 
   // ============================================================================
-  // Phase 2 Guardrails: Admin Approval Workflow
+  // Guardrails: Admin Approval Workflow
   // ============================================================================
 
   /**

@@ -77,8 +77,9 @@ const config = {
 
     // Role-Based Access Control
     rbac: {
-      enabled: process.env.RBAC_ENABLED === 'true',
-      defaultRole: process.env.RBAC_DEFAULT_ROLE || 'observer'
+      enabled: process.env.RBAC_ENABLED !== 'false', // Default true when guardrails enabled
+      defaultRole: process.env.RBAC_DEFAULT_ROLE || 'observer', // observer, contributor, admin
+      roles: ['observer', 'contributor', 'admin'] // Valid roles
     },
 
     // Structured Data

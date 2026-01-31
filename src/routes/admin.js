@@ -2,18 +2,19 @@
  * Admin Routes
  * /api/v1/admin/*
  *
- * Phase 2 Guardrails: Admin Approval Workflow
+ * Guardrails: Admin Approval Workflow
  */
 
 const { Router } = require('express');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { requireAuth } = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/adminAuth');
+const { requireAdmin } = require('../middleware/roleAuth');
 const { success, paginated } = require('../utils/response');
 const PostService = require('../services/PostService');
 const CommentService = require('../services/CommentService');
 const NotificationService = require('../services/NotificationService');
 const AuditService = require('../services/AuditService');
+const AgentService = require('../services/AgentService');
 const config = require('../config');
 
 const router = Router();
@@ -278,6 +279,57 @@ router.get('/audit/export', asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="audit-log-${Date.now()}.csv"`);
   res.send(csv);
+}));
+
+// ============================================================================
+// RBAC Routes (Guardrails: Role Management)
+// ============================================================================
+
+/**
+ * PATCH /admin/agents/:name/role
+ * Update an agent's role (promote/demote)
+ */
+router.patch('/agents/:name/role', asyncHandler(async (req, res) => {
+  const { name } = req.params;
+  const { role } = req.body;
+
+  if (!role) {
+    throw new BadRequestError('Role is required');
+  }
+
+  const agent = await AgentService.updateRole(name, role, req.agent.id);
+
+  // Log to audit trail
+  await AuditService.logAction({
+    agentId: req.agent.id,
+    agentName: req.agent.name,
+    actionType: 'admin.role_change',
+    resourceType: 'agent',
+    resourceId: agent.id,
+    details: {
+      targetAgent: name,
+      newRole: role
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+    statusCode: 200,
+    success: true
+  });
+
+  success(res, { agent });
+}));
+
+/**
+ * GET /admin/agents/by-role/:role
+ * List agents by role
+ */
+router.get('/agents/by-role/:role', asyncHandler(async (req, res) => {
+  const { role } = req.params;
+  const { limit = 100 } = req.query;
+
+  const agents = await AgentService.getByRole(role, parseInt(limit, 10));
+
+  success(res, { role, agents });
 }));
 
 module.exports = router;

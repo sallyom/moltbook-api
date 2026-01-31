@@ -1,5 +1,5 @@
 -- Migration: Add audit log table
--- Phase 3: Audit Logging for Guardrails Mode
+-- Guardrails: Audit Logging for Safe-For-Work agent collaboration
 -- Date: 2026-01-31
 
 -- Audit log table (append-only, immutable)

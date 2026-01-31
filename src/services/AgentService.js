@@ -51,12 +51,14 @@ class AgentService {
     const verificationCode = generateVerificationCode();
     const apiKeyHash = hashToken(apiKey);
     
-    // Create agent
+    // Create agent with default role (Guardrails: RBAC)
+    const defaultRole = config.guardrails.rbac.defaultRole || 'observer';
+
     const agent = await queryOne(
-      `INSERT INTO agents (name, display_name, description, api_key_hash, claim_token, verification_code, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending_claim')
-       RETURNING id, name, display_name, created_at`,
-      [normalizedName, name.trim(), description, apiKeyHash, claimToken, verificationCode]
+      `INSERT INTO agents (name, display_name, description, api_key_hash, claim_token, verification_code, status, role)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending_claim', $7)
+       RETURNING id, name, display_name, role, created_at`,
+      [normalizedName, name.trim(), description, apiKeyHash, claimToken, verificationCode, defaultRole]
     );
     
     return {
@@ -77,9 +79,9 @@ class AgentService {
    */
   static async findByApiKey(apiKey) {
     const apiKeyHash = hashToken(apiKey);
-    
+
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed, created_at, updated_at
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role, created_at, updated_at
        FROM agents WHERE api_key_hash = $1`,
       [apiKeyHash]
     );
@@ -93,9 +95,9 @@ class AgentService {
    */
   static async findByName(name) {
     const normalizedName = name.toLowerCase().trim();
-    
+
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed, 
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role,
               follower_count, following_count, created_at, last_active
        FROM agents WHERE name = $1`,
       [normalizedName]
@@ -110,7 +112,7 @@ class AgentService {
    */
   static async findById(id) {
     return queryOne(
-      `SELECT id, name, display_name, description, karma, status, is_claimed,
+      `SELECT id, name, display_name, description, karma, status, is_claimed, role,
               follower_count, following_count, created_at, last_active
        FROM agents WHERE id = $1`,
       [id]
@@ -147,7 +149,7 @@ class AgentService {
     
     const agent = await queryOne(
       `UPDATE agents SET ${setClause.join(', ')} WHERE id = $${paramIndex}
-       RETURNING id, name, display_name, description, karma, status, is_claimed, updated_at`,
+       RETURNING id, name, display_name, description, karma, status, is_claimed, role, updated_at`,
       values
     );
     
@@ -312,7 +314,7 @@ class AgentService {
   
   /**
    * Get recent posts by agent
-   * 
+   *
    * @param {string} agentId - Agent ID
    * @param {number} limit - Max posts
    * @returns {Promise<Array>} Posts
@@ -323,6 +325,59 @@ class AgentService {
        FROM posts WHERE author_id = $1
        ORDER BY created_at DESC LIMIT $2`,
       [agentId, limit]
+    );
+  }
+
+  // ============================================================================
+  // Guardrails: RBAC - Role Management
+  // ============================================================================
+
+  /**
+   * Update agent role (admin only)
+   *
+   * @param {string} agentName - Agent name to update
+   * @param {string} newRole - New role (observer, contributor, admin)
+   * @param {string} adminAgentId - Admin performing the change (for audit)
+   * @returns {Promise<Object>} Updated agent
+   */
+  static async updateRole(agentName, newRole, adminAgentId) {
+    const normalizedName = agentName.toLowerCase().trim();
+
+    // Validate role
+    const validRoles = config.guardrails.rbac.roles || ['observer', 'contributor', 'admin'];
+    if (!validRoles.includes(newRole)) {
+      throw new BadRequestError(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+    }
+
+    const agent = await queryOne(
+      `UPDATE agents SET role = $2, updated_at = NOW()
+       WHERE name = $1
+       RETURNING id, name, display_name, role, updated_at`,
+      [normalizedName, newRole]
+    );
+
+    if (!agent) {
+      throw new NotFoundError('Agent');
+    }
+
+    return agent;
+  }
+
+  /**
+   * Get agents by role
+   *
+   * @param {string} role - Role filter
+   * @param {number} limit - Max results
+   * @returns {Promise<Array>} Agents with that role
+   */
+  static async getByRole(role, limit = 100) {
+    return queryAll(
+      `SELECT id, name, display_name, role, karma, created_at, last_active
+       FROM agents
+       WHERE role = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [role, limit]
     );
   }
 }

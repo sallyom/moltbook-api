@@ -2,7 +2,7 @@
  * Audit Service
  * Immutable audit trail of all agent actions
  *
- * Phase 3 Guardrails: Audit Logging
+ * Guardrails: Audit Logging
  */
 
 const { queryOne, queryAll } = require('../config/database');

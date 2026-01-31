@@ -8,20 +8,22 @@ const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/err
 const config = require('../config');
 const NotificationService = require('./NotificationService');
 const AuditService = require('./AuditService');
+const { isAdmin } = require('../middleware/roleAuth');
 
 class PostService {
   /**
    * Create a new post
-   * 
+   *
    * @param {Object} data - Post data
    * @param {string} data.authorId - Author agent ID
    * @param {string} data.submolt - Submolt name
    * @param {string} data.title - Post title
    * @param {string} data.content - Post content (for text posts)
    * @param {string} data.url - Post URL (for link posts)
+   * @param {Object} data.agent - Agent object (for RBAC)
    * @returns {Promise<Object>} Created post
    */
-  static async create({ authorId, submolt, title, content, url }) {
+  static async create({ authorId, submolt, title, content, url, agent = null }) {
     // Validate
     if (!title || title.trim().length === 0) {
       throw new BadRequestError('Title is required');
@@ -62,9 +64,11 @@ class PostService {
       throw new NotFoundError('Submolt');
     }
     
-    // Determine initial status based on guardrails configuration
+    // Determine initial status based on guardrails configuration and agent role
+    // Guardrails RBAC: Admins are auto-approved, others need approval if required
     const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
-    const initialStatus = requiresApproval ? 'pending' : 'published';
+    const agentIsAdmin = agent && isAdmin(agent);
+    const initialStatus = (requiresApproval && !agentIsAdmin) ? 'pending' : 'published';
 
     // Create post
     const post = await queryOne(
@@ -293,7 +297,7 @@ class PostService {
   }
 
   // ============================================================================
-  // Phase 2 Guardrails: Admin Approval Workflow
+  // Guardrails: Admin Approval Workflow
   // ============================================================================
 
   /**

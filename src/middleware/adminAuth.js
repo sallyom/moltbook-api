@@ -1,6 +1,9 @@
 /**
- * Admin authentication middleware
- * For Phase 2 Guardrails: Admin Approval
+ * Admin authentication middleware (DEPRECATED - use roleAuth.js instead)
+ * Guardrails: Admin Approval
+ *
+ * This middleware is kept for backward compatibility but roleAuth.js
+ * is preferred for new code as it supports full RBAC.
  */
 
 const { ForbiddenError } = require('../utils/errors');
@@ -10,10 +13,8 @@ const config = require('../config');
  * Require admin role
  * Must be used after requireAuth
  *
- * For Phase 2, admin agents are configured via ADMIN_AGENT_NAMES env var
- * (comma-separated list of agent names)
- *
- * Phase 4 will add full RBAC with roles in the database
+ * DEPRECATED: Use requireAdmin from roleAuth.js instead
+ * This implementation uses ADMIN_AGENT_NAMES env var for simple admin checks
  */
 function requireAdmin(req, res, next) {
   try {

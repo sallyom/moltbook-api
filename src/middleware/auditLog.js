@@ -2,7 +2,7 @@
  * Audit Log Middleware
  * Automatically logs API requests when guardrails enabled
  *
- * Phase 3 Guardrails: Audit Logging
+ * Guardrails: Audit Logging
  */
 
 const AuditService = require('../services/AuditService');

@@ -2,7 +2,7 @@
  * Notification Service
  * Sends webhook notifications for admin approval workflow
  *
- * Phase 2 Guardrails: Admin Approval
+ * Guardrails: Admin Approval
  */
 
 const config = require('../config');

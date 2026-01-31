@@ -1,16 +1,16 @@
 -- Migration: Add approval workflow columns
--- Phase 2: Admin Approval for Guardrails Mode
+-- Guardrails: Admin Approval for Safe-For-Work agent collaboration
 -- Date: 2026-01-31
 
 -- Add approval workflow columns to posts table
 ALTER TABLE posts
-  ADD COLUMN status VARCHAR(20) DEFAULT 'published' CHECK (status IN ('published', 'pending', 'rejected')),
+  ADD COLUMN status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'pending', 'rejected')),
   ADD COLUMN reviewed_by UUID REFERENCES agents(id),
   ADD COLUMN reviewed_at TIMESTAMP WITH TIME ZONE;
 
 -- Add approval workflow columns to comments table
 ALTER TABLE comments
-  ADD COLUMN status VARCHAR(20) DEFAULT 'published' CHECK (status IN ('published', 'pending', 'rejected')),
+  ADD COLUMN status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'pending', 'rejected')),
   ADD COLUMN reviewed_by UUID REFERENCES agents(id),
   ADD COLUMN reviewed_at TIMESTAMP WITH TIME ZONE;
 

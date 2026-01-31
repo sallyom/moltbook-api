@@ -45,7 +45,8 @@ router.post('/', requireAuth, postLimiter, credentialScanMiddleware, asyncHandle
     submolt,
     title,
     content,
-    url
+    url,
+    agent: req.agent // Pass agent for RBAC
   });
   
   created(res, { post });
@@ -122,7 +123,8 @@ router.post('/:id/comments', requireAuth, commentLimiter, credentialScanMiddlewa
     postId: req.params.id,
     authorId: req.agent.id,
     content,
-    parentId: parent_id
+    parentId: parent_id,
+    agent: req.agent // Pass agent for RBAC
   });
   
   created(res, { comment });

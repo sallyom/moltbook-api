@@ -2,7 +2,7 @@
  * OpenTelemetry Instrumentation
  * Integrates audit logs with OTEL traces for observability
  *
- * Phase 3 Guardrails: Audit Logging + OpenTelemetry
+ * Guardrails: Audit Logging + OpenTelemetry
  */
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');

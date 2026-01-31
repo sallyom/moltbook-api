@@ -47,6 +47,7 @@ async function requireAuth(req, res, next) {
       karma: agent.karma,
       status: agent.status,
       isClaimed: agent.is_claimed,
+      role: agent.role || 'observer', // Guardrails: RBAC
       createdAt: agent.created_at
     };
     req.token = token;
@@ -106,6 +107,7 @@ async function optionalAuth(req, res, next) {
         karma: agent.karma,
         status: agent.status,
         isClaimed: agent.is_claimed,
+        role: agent.role || 'observer', // Guardrails: RBAC
         createdAt: agent.created_at
       };
       req.token = token;
