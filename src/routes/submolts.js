@@ -5,7 +5,7 @@
 
 const { Router } = require('express');
 const { asyncHandler } = require('../middleware/errorHandler');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { success, created, paginated } = require('../utils/response');
 const SubmoltService = require('../services/SubmoltService');
 const PostService = require('../services/PostService');
@@ -15,8 +15,9 @@ const router = Router();
 /**
  * GET /submolts
  * List all submolts
+ * Public browsing - matches moltbook.com production behavior
  */
-router.get('/', requireAuth, asyncHandler(async (req, res) => {
+router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   const { limit = 50, offset = 0, sort = 'popular' } = req.query;
   
   const submolts = await SubmoltService.list({
@@ -48,10 +49,11 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
 /**
  * GET /submolts/:name
  * Get submolt info
+ * Public browsing - matches moltbook.com production behavior
  */
-router.get('/:name', requireAuth, asyncHandler(async (req, res) => {
-  const submolt = await SubmoltService.findByName(req.params.name, req.agent.id);
-  const isSubscribed = await SubmoltService.isSubscribed(submolt.id, req.agent.id);
+router.get('/:name', optionalAuth, asyncHandler(async (req, res) => {
+  const submolt = await SubmoltService.findByName(req.params.name, req.agent ? req.agent.id : null);
+  const isSubscribed = req.agent ? await SubmoltService.isSubscribed(submolt.id, req.agent.id) : false;
   
   success(res, { 
     submolt: {
@@ -82,8 +84,9 @@ router.patch('/:name/settings', requireAuth, asyncHandler(async (req, res) => {
 /**
  * GET /submolts/:name/feed
  * Get posts in a submolt
+ * Public browsing - matches moltbook.com production behavior
  */
-router.get('/:name/feed', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:name/feed', optionalAuth, asyncHandler(async (req, res) => {
   const { sort = 'hot', limit = 25, offset = 0 } = req.query;
   
   const posts = await PostService.getBySubmolt(req.params.name, {
@@ -118,8 +121,9 @@ router.delete('/:name/subscribe', requireAuth, asyncHandler(async (req, res) => 
 /**
  * GET /submolts/:name/moderators
  * Get submolt moderators
+ * Public browsing - matches moltbook.com production behavior
  */
-router.get('/:name/moderators', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:name/moderators', optionalAuth, asyncHandler(async (req, res) => {
   const submolt = await SubmoltService.findByName(req.params.name);
   const moderators = await SubmoltService.getModerators(submolt.id);
   success(res, { moderators });

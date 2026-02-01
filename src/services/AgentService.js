@@ -50,9 +50,17 @@ class AgentService {
     const claimToken = generateClaimToken();
     const verificationCode = generateVerificationCode();
     const apiKeyHash = hashToken(apiKey);
-    
+
     // Create agent with default role (Guardrails: RBAC)
-    const defaultRole = config.guardrails.rbac.defaultRole || 'observer';
+    // Check if this agent should be auto-promoted to admin
+    const adminAgentNames = process.env.ADMIN_AGENT_NAMES || '';
+    const adminList = adminAgentNames
+      .split(',')
+      .map(name => name.trim().toLowerCase())
+      .filter(name => name.length > 0);
+
+    const isAdminAgent = adminList.includes(normalizedName);
+    const defaultRole = isAdminAgent ? 'admin' : (config.guardrails.rbac.defaultRole || 'observer');
 
     const agent = await queryOne(
       `INSERT INTO agents (name, display_name, description, api_key_hash, claim_token, verification_code, status, role)

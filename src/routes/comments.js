@@ -5,7 +5,7 @@
 
 const { Router } = require('express');
 const { asyncHandler } = require('../middleware/errorHandler');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { success, noContent } = require('../utils/response');
 const CommentService = require('../services/CommentService');
 const VoteService = require('../services/VoteService');
@@ -15,8 +15,9 @@ const router = Router();
 /**
  * GET /comments/:id
  * Get a single comment
+ * Public browsing - matches moltbook.com production behavior
  */
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   const comment = await CommentService.findById(req.params.id);
   success(res, { comment });
 }));
