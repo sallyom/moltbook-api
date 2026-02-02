@@ -16,6 +16,7 @@ const {
   LoggerProvider,
   BatchLogRecordProcessor
 } = require('@opentelemetry/sdk-logs');
+const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const config = require('../config');
 
 let sdk;
@@ -37,10 +38,13 @@ function initializeOTEL() {
     const otlpEndpoint = config.otel.endpoint || 'http://localhost:4318';
 
     // Create resource with service metadata
+    const mlflowExperiment = process.env.MLFLOW_EXPERIMENT_NAME || 'OpenClaw';
     const resource = new Resource({
       [SEMRESATTRS_SERVICE_NAME]: serviceName,
       [SEMRESATTRS_SERVICE_VERSION]: require('../../package.json').version,
-      'deployment.environment': config.nodeEnv
+      'deployment.environment': config.nodeEnv,
+      'mlflow.experimentName': mlflowExperiment,
+      'mlflow.projectName': mlflowExperiment
     });
 
     // Initialize Logger Provider for audit logs
@@ -58,14 +62,36 @@ function initializeOTEL() {
     // Get audit logger
     auditLogger = loggerProvider.getLogger('audit', '1.0.0');
 
-    // Initialize SDK with auto-instrumentation
-    const traceExporter = new OTLPTraceExporter({
+    // Initialize trace exporters and span processors
+    const spanProcessors = [];
+
+    // Primary: OTEL Collector
+    const collectorExporter = new OTLPTraceExporter({
       url: `${otlpEndpoint}/v1/traces`
     });
+    spanProcessors.push(new BatchSpanProcessor(collectorExporter));
 
+    // Optional: MLFlow (if enabled)
+    const mlflowEnabled = process.env.MLFLOW_TRACING_ENABLED === 'true';
+    const mlflowEndpoint = process.env.MLFLOW_TRACKING_URI || 'http://mlflow-service.mlflow.svc.cluster.local:5000';
+    // mlflowExperiment already declared above (line 42)
+
+    if (mlflowEnabled) {
+      const mlflowExporter = new OTLPTraceExporter({
+        url: `${mlflowEndpoint}/v1/traces`,
+        headers: {
+          'x-mlflow-source': 'moltbook-api',
+          'x-mlflow-experiment-name': mlflowExperiment
+        }
+      });
+      spanProcessors.push(new BatchSpanProcessor(mlflowExporter));
+      console.log(`[OTEL] MLFlow tracing enabled - sending to ${mlflowEndpoint} (experiment: ${mlflowExperiment})`);
+    }
+
+    // NodeSDK with multiple span processors
     sdk = new NodeSDK({
       resource,
-      traceExporter,
+      spanProcessors,
       instrumentations: [
         new HttpInstrumentation({
           ignoreIncomingPaths: ['/health', '/api/v1/health']
@@ -76,7 +102,10 @@ function initializeOTEL() {
 
     sdk.start();
 
-    console.log(`[OTEL] Initialized - sending to ${otlpEndpoint}`);
+    const destinations = spanProcessors.length > 1
+      ? `${otlpEndpoint} + MLFlow`
+      : otlpEndpoint;
+    console.log(`[OTEL] Initialized - sending to ${destinations}`);
     return sdk;
   } catch (error) {
     console.error('[OTEL] Initialization failed:', error.message);

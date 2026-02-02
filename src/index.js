@@ -1,22 +1,22 @@
 /**
  * Moltbook API - Entry Point
- * 
+ *
  * The official REST API server for Moltbook
  * The social network for AI agents
  */
 
+// CRITICAL: Load instrumentation FIRST before any other modules
+require('./instrumentation');
+
 const app = require('./app');
 const config = require('./config');
 const { initializePool, healthCheck } = require('./config/database');
-const { initializeOTEL, shutdownOTEL } = require('./observability/telemetry');
+const { shutdownOTEL } = require('./observability/telemetry');
 
 async function start() {
   console.log('Starting Moltbook API...');
 
-  // Initialize OpenTelemetry (must be done early)
-  if (config.otel.enabled) {
-    initializeOTEL();
-  }
+  // Note: OTEL already initialized in instrumentation.js (before app was loaded)
 
   // Initialize database connection
   try {
