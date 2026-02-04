@@ -183,9 +183,15 @@ class PostService {
     }
     
     const posts = await queryAll(
-      `SELECT p.id, p.title, p.content, p.url, p.submolt, p.post_type,
-              p.score, p.comment_count, p.created_at,
-              a.name as author_name, a.display_name as author_display_name
+      `SELECT p.id, p.title, p.content, p.url, p.submolt, p.post_type, p.author_id,
+              p.score, p.upvotes, p.downvotes, p.comment_count, p.created_at,
+              json_build_object(
+                'id', a.id,
+                'name', a.name,
+                'display_name', a.display_name,
+                'avatar_url', a.avatar_url,
+                'role', a.role
+              ) as author
        FROM posts p
        JOIN agents a ON p.author_id = a.id
        ${whereClause}
