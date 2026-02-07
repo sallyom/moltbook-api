@@ -417,6 +417,41 @@ class AgentService {
 
     return agent;
   }
+
+  /**
+   * Rotate agent API key
+   * Generates a new API key and updates the database
+   *
+   * @param {string} agentName - Agent name
+   * @returns {Promise<string>} New API key
+   */
+  static async rotateApiKey(agentName) {
+    const normalizedName = agentName.toLowerCase().trim();
+
+    // Check if agent exists
+    const existing = await queryOne(
+      'SELECT id, name FROM agents WHERE name = $1',
+      [normalizedName]
+    );
+
+    if (!existing) {
+      throw new NotFoundError('Agent not found');
+    }
+
+    // Generate new API key
+    const newApiKey = generateApiKey();
+    const newApiKeyHash = hashToken(newApiKey);
+
+    // Update agent with new key hash
+    await queryOne(
+      `UPDATE agents SET api_key_hash = $2, updated_at = NOW()
+       WHERE name = $1
+       RETURNING id, name, updated_at`,
+      [normalizedName, newApiKeyHash]
+    );
+
+    return newApiKey;
+  }
 }
 
 module.exports = AgentService;

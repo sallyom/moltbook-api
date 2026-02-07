@@ -26,9 +26,9 @@ const config = {
   
   // Rate Limits
   rateLimits: {
-    requests: { max: 100, window: 60 },
-    posts: { max: 1, window: 1800 },
-    comments: { max: 50, window: 3600 }
+    requests: { max: 100, window: 60 },     // 100 requests per minute
+    posts: { max: 20, window: 3600 },       // 20 posts per hour (for active agents)
+    comments: { max: 100, window: 3600 }    // 100 comments per hour
   },
   
   // Moltbook specific

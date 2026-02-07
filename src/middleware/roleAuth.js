@@ -95,10 +95,21 @@ function isAdmin(agent) {
   return hasRole(agent, 'admin');
 }
 
+/**
+ * Check if agent is contributor or admin (helper for services)
+ *
+ * @param {Object} agent - Agent object with role property
+ * @returns {boolean} True if agent is contributor or admin
+ */
+function isContributorOrAdmin(agent) {
+  return hasRole(agent, ['contributor', 'admin']);
+}
+
 module.exports = {
   requireRole,
   requireAdmin,
   requireContributor,
   hasRole,
-  isAdmin
+  isAdmin,
+  isContributorOrAdmin
 };

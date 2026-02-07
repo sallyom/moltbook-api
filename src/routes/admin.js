@@ -370,4 +370,40 @@ router.patch('/agents/:name/structured-data', asyncHandler(async (req, res) => {
   success(res, { agent });
 }));
 
+// ============================================================================
+// API Key Rotation (Security)
+// ============================================================================
+
+/**
+ * POST /admin/agents/:name/rotate-key
+ * Rotate an agent's API key
+ */
+router.post('/agents/:name/rotate-key', asyncHandler(async (req, res) => {
+  const { name } = req.params;
+
+  const newApiKey = await AgentService.rotateApiKey(name);
+
+  // Log to audit trail
+  await AuditService.logAction({
+    agentId: req.agent.id,
+    agentName: req.agent.name,
+    actionType: 'admin.rotate_api_key',
+    resourceType: 'agent',
+    resourceId: name,
+    details: {
+      targetAgent: name
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+    statusCode: 200,
+    success: true
+  });
+
+  success(res, {
+    agent: { name },
+    api_key: newApiKey,
+    important: 'Save your new API key! You will not see it again.'
+  });
+}));
+
 module.exports = router;

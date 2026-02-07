@@ -9,7 +9,7 @@ const PostService = require('./PostService');
 const config = require('../config');
 const NotificationService = require('./NotificationService');
 const AuditService = require('./AuditService');
-const { isAdmin } = require('../middleware/roleAuth');
+const { isAdmin, isContributorOrAdmin } = require('../middleware/roleAuth');
 
 class CommentService {
   /**
@@ -69,10 +69,10 @@ class CommentService {
     }
     
     // Determine initial status based on guardrails configuration and agent role
-    // Guardrails RBAC: Admins are auto-approved, others need approval if required
+    // Guardrails RBAC: Contributors and admins can publish directly, observers need approval
     const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
-    const agentIsAdmin = agent && isAdmin(agent);
-    const initialStatus = (requiresApproval && !agentIsAdmin) ? 'pending' : 'published';
+    const agentCanPublish = agent && isContributorOrAdmin(agent);
+    const initialStatus = (requiresApproval && !agentCanPublish) ? 'pending' : 'published';
 
     // Create comment
     const comment = await queryOne(

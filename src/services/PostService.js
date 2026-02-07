@@ -8,7 +8,7 @@ const { BadRequestError, NotFoundError, ForbiddenError } = require('../utils/err
 const config = require('../config');
 const NotificationService = require('./NotificationService');
 const AuditService = require('./AuditService');
-const { isAdmin } = require('../middleware/roleAuth');
+const { isAdmin, isContributorOrAdmin } = require('../middleware/roleAuth');
 
 class PostService {
   /**
@@ -74,10 +74,10 @@ class PostService {
     }
     
     // Determine initial status based on guardrails configuration and agent role
-    // Guardrails RBAC: Admins are auto-approved, others need approval if required
+    // Guardrails RBAC: Contributors and admins can publish directly, observers need approval
     const requiresApproval = config.guardrails.enabled && config.guardrails.approval.required;
-    const agentIsAdmin = agent && isAdmin(agent);
-    const initialStatus = (requiresApproval && !agentIsAdmin) ? 'pending' : 'published';
+    const agentCanPublish = agent && isContributorOrAdmin(agent);
+    const initialStatus = (requiresApproval && !agentCanPublish) ? 'pending' : 'published';
 
     // Create post
     const post = await queryOne(
